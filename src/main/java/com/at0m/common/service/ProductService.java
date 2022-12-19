@@ -5,6 +5,7 @@ import com.at0m.common.model.AvailableQuantity;
 import com.at0m.common.model.Product;
 import com.at0m.common.model.ProductResponseResource;
 import com.at0m.common.util.ProductUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.stereotype.Component;
@@ -19,6 +20,7 @@ import static org.springframework.data.mongodb.core.query.Criteria.where;
 import static org.springframework.data.mongodb.core.query.Query.query;
 
 @Service
+@Slf4j
 public class ProductService {
 
     private final MongoTemplate mongoTemplate;
@@ -34,7 +36,9 @@ public class ProductService {
     }
 
     public List<ProductResponseResource> getAllProductsList() {
+        log.info("Executing GET http://AT0M-AVAILABLE-QUANTITY-API/api/quantity");
         List<AvailableQuantity> availableQuantities = availableQuantityFeign.getAllQuantity();
+        log.info("Connecting to "+mongoTemplate.getDb());
         List<Product> products = mongoTemplate.findAll(Product.class, "product");
 
         for(int i=0;i<products.size();i++){
