@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.annotation.Transient;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.util.Date;
@@ -16,6 +17,7 @@ import java.util.Date;
 public class Product {
     private String productName;
     private String price;
+    @Transient
     private int quantityAvailable;
     private Date creationDate;
     private Date modifiedDate;

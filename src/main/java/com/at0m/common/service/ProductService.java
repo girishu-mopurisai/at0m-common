@@ -37,7 +37,7 @@ public class ProductService {
 
     public List<ProductResponseResource> getAllProductsList() {
         log.info("Executing GET http://AT0M-AVAILABLE-QUANTITY-API/api/quantity");
-        List<AvailableQuantity> availableQuantities = availableQuantityFeign.getAllQuantity();
+        List<AvailableQuantity> availableQuantities = availableQuantityFeign.getAllAvailableQuantities();
         log.info("Connecting to "+mongoTemplate.getDb());
         List<Product> products = mongoTemplate.findAll(Product.class, "product");
 
@@ -53,11 +53,13 @@ public class ProductService {
     }
 
     public ProductResponseResource getProductByproductName(String productName) {
-        List<Product> productByName = mongoTemplate.find(query(where("productName").is(productName)),Product.class);
-        if(productByName.size() > 0){
+        log.info("Feign call to "+availableQuantityFeign);
+        AvailableQuantity availableQuantity = availableQuantityFeign.getByProductname(productName);
+        if (availableQuantity != null) {
+            List<Product> productByName = mongoTemplate.find(query(where("productName").is(productName)), Product.class);
+            productByName.get(0).setQuantityAvailable(availableQuantity.getQuantityAvailable());
             return productUtil.productTransformerSuccessful(productByName).get(0);
-        }
-        else{
+        } else {
             ProductResponseResource productResponseResource = new ProductResponseResource();
             productResponseResource.setSuccessful(false);
             return productResponseResource;
@@ -82,16 +84,22 @@ public class ProductService {
     public List<ProductResponseResource> saveListOfProducts(List<Product> products) {
         List<Product> productsSaved = new ArrayList<>();
         List<Product> productsNotSaved = new ArrayList<>();
+        List<AvailableQuantity> availableQuantityList = new ArrayList<>();
         for(int i=0;i<products.size();i++){
             if(mongoTemplate.find(query(where("productName").is(products.get(i).getProductName())),Product.class).size()==0) {
                 products.get(i).setCreationDate(new Date());
                 products.get(i).setModifiedDate(new Date());
                 productsSaved.add(mongoTemplate.save(products.get(i)));
+                AvailableQuantity availableQuantity = new AvailableQuantity();
+                availableQuantity.setProductName(products.get(i).getProductName());
+                availableQuantity.setQuantityAvailable(products.get(i).getQuantityAvailable());
+                availableQuantityList.add(availableQuantity);
             }
             else {
                 productsNotSaved.add(products.get(i));
             }
         }
+        availableQuantityFeign.saveListOfQuantities(availableQuantityList);
         List<ProductResponseResource> productsSavedTransformed = productUtil.productTransformerSuccessful(productsSaved);
         List<ProductResponseResource> productsNotSavedTransformed = productUtil.productTransformerFail(productsNotSaved);
         List<ProductResponseResource> response = new ArrayList<>();
