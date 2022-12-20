@@ -2,11 +2,12 @@ package com.at0m.common.util;
 
 import com.at0m.common.model.Product;
 import com.at0m.common.model.ProductResponseResource;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 
 @Component
 public class ProductUtil {
@@ -37,6 +38,24 @@ public class ProductUtil {
             productResponseResources.add(productResponseResource);
         }
         return productResponseResources;
+    }
+
+    public void removeDuplicatesFromList(List<Product> products){
+        Set<Product> setOfProducts = new HashSet<>(products);
+        products.clear();
+        products.addAll(setOfProducts);
+    }
+
+    public Query createQuery(String productName){
+        return Query.query(Criteria.where("productName").is(productName));
+    }
+
+    public Update createUpdateQuery(Product product){
+        Update update = (new Update()
+                .set("productName",product.getProductName())
+                .set("price",product.getPrice())
+                .set("modifiedDate",new Date()));
+        return update;
     }
 }
 
