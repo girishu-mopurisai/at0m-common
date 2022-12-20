@@ -5,16 +5,21 @@ import com.at0m.common.model.AvailableQuantity;
 import com.at0m.common.model.Product;
 import com.at0m.common.model.ProductResponseResource;
 import com.at0m.common.util.ProductUtil;
+import com.mongodb.MongoBulkWriteException;
+import com.mongodb.bulk.BulkWriteError;
+import com.mongodb.bulk.BulkWriteResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 
 import static org.springframework.data.mongodb.core.query.Criteria.where;
 import static org.springframework.data.mongodb.core.query.Query.query;
@@ -34,6 +39,8 @@ public class ProductService {
         this.mongoTemplate = mongoTemplate;
         this.productUtil = productUtil;
     }
+
+
 
     public List<ProductResponseResource> getAllProductsList() {
         log.info("Executing GET http://AT0M-AVAILABLE-QUANTITY-API/api/quantity");
@@ -82,30 +89,35 @@ public class ProductService {
     }
 
     public List<ProductResponseResource> saveListOfProducts(List<Product> products) {
-        List<Product> productsSaved = new ArrayList<>();
-        List<Product> productsNotSaved = new ArrayList<>();
+        productUtil.removeDuplicatesFromList(products);
+        BulkOperations bulkOps = this.mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED,Product.class);
         List<AvailableQuantity> availableQuantityList = new ArrayList<>();
-        for(int i=0;i<products.size();i++){
-            if(mongoTemplate.find(query(where("productName").is(products.get(i).getProductName())),Product.class).size()==0) {
-                products.get(i).setCreationDate(new Date());
-                products.get(i).setModifiedDate(new Date());
-                productsSaved.add(mongoTemplate.save(products.get(i)));
-                AvailableQuantity availableQuantity = new AvailableQuantity();
-                availableQuantity.setProductName(products.get(i).getProductName());
-                availableQuantity.setQuantityAvailable(products.get(i).getQuantityAvailable());
-                availableQuantityList.add(availableQuantity);
-            }
-            else {
-                productsNotSaved.add(products.get(i));
+        Iterator iterator = products.iterator();
+        while(iterator.hasNext()){
+            Product product = (Product) iterator.next();
+            Query query = productUtil.createQuery(product.getProductName());
+            Update update = productUtil.createUpdateQuery(product);
+            bulkOps.upsert(query,update);
+            AvailableQuantity availableQuantity = new AvailableQuantity();
+            availableQuantity.setProductName(product.getProductName());
+            availableQuantity.setQuantityAvailable(product.getQuantityAvailable());
+            availableQuantity.setModifiedDate(new Date());
+            availableQuantityList.add(availableQuantity);
+        }
+        try {
+            bulkOps.execute();
+            availableQuantityFeign.saveListOfQuantities(availableQuantityList);
+        } catch(DuplicateKeyException duplicateKeyException) {
+            Throwable cause = duplicateKeyException.getCause();
+            if(cause instanceof MongoBulkWriteException){
+                MongoBulkWriteException mongoBulkWriteException = (MongoBulkWriteException) cause;
+                List<BulkWriteError> bulkWriteErrors = mongoBulkWriteException.getWriteErrors();
+                bulkWriteErrors.forEach(bulkWriteError -> {
+                    log.error(bulkWriteError.getIndex()+" Is already present in Database");
+                });
             }
         }
-        availableQuantityFeign.saveListOfQuantities(availableQuantityList);
-        List<ProductResponseResource> productsSavedTransformed = productUtil.productTransformerSuccessful(productsSaved);
-        List<ProductResponseResource> productsNotSavedTransformed = productUtil.productTransformerFail(productsNotSaved);
-        List<ProductResponseResource> response = new ArrayList<>();
-        response.addAll(productsSavedTransformed);
-        response.addAll(productsNotSavedTransformed);
-        return response;
+        return productUtil.productTransformerSuccessful(products);
     }
 
     public ProductResponseResource updateProduct(Product product) {
@@ -119,7 +131,7 @@ public class ProductService {
 
     public List<ProductResponseResource> deleteAll() {
         List<Product> product = mongoTemplate.findAll(Product.class, "product");
-        mongoTemplate.dropCollection("products");
+        mongoTemplate.dropCollection("product");
         return productUtil.productTransformerSuccessful(product);
     }
 
